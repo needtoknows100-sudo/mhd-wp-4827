@@ -813,5 +813,33 @@ return _rawSell()+`<div class="card"><h2>Sample / free cups</h2><p class="m">Cup
 <label>Date</label><input id="sm_d" type="date" value="${today()}"><label>Batch</label><select id="sm_b" onchange="smpCalc()">${bs.length?opts(bs,b=>`<option value="${b.no}">${batchLbl(b.no)} \u2014 ${b.rem} cups left</option>`):'<option value="">No cups in stock</option>'}</select>
 <label>Quantity (cups)</label><input id="sm_q" type="number" inputmode="numeric" oninput="smpCalc()"><label>Note (who it is for / why)</label><input id="sm_n"><p id="sm_pv"></p><button class="a" onclick="smpSave()">Save sample / free</button>
 <h3>Given so far (${list.reduce((a,x)=>a+x.qty,0)} cups, cost ${fmt(list.reduce((a,x)=>a+x.cost,0))})</h3>${tbl(['Date','Batch','Cups','Cost','Note',''],list.map(x=>[dmy(x.date),batchLbl(x.batch),x.qty,fmt(x.cost),esc(x.note),`<button class="a s" ${sm} onclick="undoSmp('${x.id}')">Undo</button>`]))}</div>`};
+// ---- v25: old pending full list (cash + damaged/expired), batch report, old pending report
+let brSel='';
+const oldRows=()=>{const r=[];S.payments.filter(p=>p.old).forEach(p=>r.push({d:p.date,s:p.shop,t:'Collected \u00b7 '+p.method,q:'',a:p.amt,k:'c'}));(S.oldAdj||[]).forEach(x=>r.push({d:x.date,s:x.shop,t:x.reason+(x.note?' \u00b7 '+x.note:''),q:x.qty,a:x.amt,k:'d'}));return r.sort((a,b)=>a.d<b.d?1:a.d>b.d?-1:0)};
+const oldSum=()=>{const rows=oldRows(),m={};rows.forEach(x=>{const o=m[x.s||'']||(m[x.s||'']={n:shop(x.s)?.name||'Shop not selected',c:0,q:0,d:0});if(x.k=='c')o.c+=x.a;else{o.q+=x.q;o.d+=x.a}});const cash=r2(rows.filter(x=>x.k=='c').reduce((a,x)=>a+x.a,0)),dm=r2(rows.filter(x=>x.k=='d').reduce((a,x)=>a+x.a,0)),dq=rows.filter(x=>x.k=='d').reduce((a,x)=>a+x.q,0);return{rows,shops:Object.values(m),cash,dm,dq}};
+const oldKp=o=>`<div class="g">${kp('Opening old pending',fmt(S.oldPend||0))}${kp('Cash collected',fmt(o.cash))}${kp('Damaged / expired ('+o.dq+' cups)',fmt(o.dm))}${kp('Still to collect',fmt(oldRemain()),oldRemain()>0?'bad':'')}</div>`;
+const _rawPays25=V.raw_pays;V.raw_pays=function(){const o=oldSum();
+return _rawPays25().replace('<span>Collected so far</span>','<span>Collected + damaged/expired</span>')+`<div class="card"><h2>Old pending from shops \u2013 all entries</h2>${oldKp(o)}<p class="m">Cash collections and damaged / expired cups together. Damaged / expired entries reduce the old pending but are not cash.</p>${tbl(['Date','Shop','Type','Cups','Amount'],o.rows.map(x=>[dmy(x.d),esc(shop(x.s)?.name||'-'),esc(x.t),x.q,x.k=='d'?'<span class="bad">'+fmt(x.a)+'</span>':fmt(x.a)]))}</div>`};
+SUBS.rep.push(['brep','Batch report','prod',c=>has(c,'<h2>Batch report</h2>')],['orep','Old pending report','clock',c=>has(c,'<h2>Old pending report</h2>')]);
+const _rawRep25=V.raw_rep;V.raw_rep=function(){const done=S.batches.filter(b=>b.status!='open').slice().reverse(),b=done.find(x=>x.no==brSel)||done.find(x=>x.date==today())||done[0];let card;
+if(!b)card='<div class="card"><h2>Batch report</h2><p class="m">No finished batch yet.</p></div>';else{brSel=b.no;
+const iv=S.invoices.filter(i=>i.batch==b.no),sp=(S.samples||[]).filter(x=>x.batch==b.no),sales=r2(iv.reduce((a,i)=>a+i.total,0)),rec=r2(iv.reduce((a,i)=>a+i.pay,0)),paid=iv.reduce((a,i)=>a+i.paid,0),fr=iv.reduce((a,i)=>a+i.free,0),cg=iv.reduce((a,i)=>a+i.cogs,0),sq=sp.reduce((a,x)=>a+x.qty,0),sc=sp.reduce((a,x)=>a+x.cost,0),m={};
+iv.forEach(i=>{const o=m[i.shop]||(m[i.shop]={c:0,s:0,r:0});o.c+=i.paid+i.free;o.s+=i.total;o.r+=i.pay});
+card=`<div class="card"><h2>Batch report</h2><label>Batch</label><select onchange="brSel=this.value;render()">${opts(done,x=>`<option value="${x.no}" ${x.no==b.no?'selected':''}>${batchLbl(x.no)} \u2014 ${dmy(x.date)}</option>`)}</select>
+<h3>Production</h3><div class="g">${kp('Eggs used',b.eggs||0)}${kp('Good cups',b.good)}${kp('Bad cups',b.bad||0)}${kp('Cups left',b.rem)}${kp('Ingredients',fmt(b.ing||0))}${kp('Packaging',fmt(b.pack||0))}${kp('Fuel + other',fmt((b.fuel||0)+(b.oth||0)))}${kp('Total cost',fmt(b.total))}${kp('Cost per cup',fmt(b.cpc))}${kp('Expiry',dmy(b.expiry))}</div>
+<h3>Sales</h3><div class="g">${kp('Cups sold (paid)',paid)}${kp('Free cups',fr)}${kp('Samples',sq+' cups ('+fmt(sc)+')')}${kp('Sales',fmt(sales))}${kp('Received',fmt(rec))}${kp('Pending',fmt(r2(sales-rec)),sales-rec>0.004?'bad':'')}${kp('Cost of cups out',fmt(r2(cg+sc)))}${kp('Gross profit',fmt(r2(sales-cg-sc)),sales-cg-sc<0?'bad':'')}</div>
+<h3>By shop</h3>${tbl(['Shop','Cups','Sales','Received','Pending'],Object.entries(m).map(([k,o])=>[esc(shop(k)?.name||''),o.c,fmt(o.s),fmt(o.r),`<span class="${o.s-o.r>0.004?'bad':''}">${fmt(o.s-o.r)}</span>`]))}<p class="m">Gross profit = sales minus cost of cups delivered (paid + free) and samples from this batch.</p></div>`}
+const o=oldSum();
+return _rawRep25()+card+`<div class="card"><h2>Old pending report</h2>${oldKp(o)}<h3>By shop</h3>${tbl(['Shop','Cash collected','Damaged cups','Damaged amount'],o.shops.map(s=>[esc(s.n),fmt(s.c),s.q,fmt(s.d)]))}</div>`};
+// ---- v26: dashboard buttons (Batch-wise, Supplier bills, Finished cups) open their details when tapped
+let dashPane='';
+function dashSet(k){dashPane=dashPane==k?'':k;['bw','sb','fc'].forEach(x=>{const e=$('dp_'+x),b=$('db_'+x);if(e)e.style.display=dashPane==x?'block':'none';if(b)b.classList.toggle('on',dashPane==x)})}
+const st26=document.createElement('style');st26.textContent='.dbt{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:0 0 12px}.dbt button{margin:0!important;width:100%;display:flex;flex-direction:column;align-items:center;gap:4px;padding:12px 6px;text-align:center;line-height:1.25}.dbt button b{font-size:14px}.dbt button span{font-size:12px;font-weight:400;opacity:.85}.dbt button.on{outline:2px solid #009aa0}';document.head.appendChild(st26);
+const _dash26=V.dash;V.dash=function(){let h=_dash26();const P=[],keys=['bw','sb','fc'],lab={bw:'Batch-wise',sb:'Supplier bills',fc:'Finished cups'};
+h=h.replace(/<details class="card fold"[^>]*><summary><span class="ft">([\s\S]*?)<\/span><span class="fs">([\s\S]*?)<\/span><\/summary><div class="fb">([\s\S]*?)<\/div><\/details>/g,(m,t,s,inner)=>{const k=keys[P.length];P.push({k,t,s,inner});return P.length==1?'@@DB@@':''});
+if(!P.length)return h;
+const btns=`<div class="dbt">${P.map(p=>`<button class="a s ${dashPane==p.k?'on':''}" id="db_${p.k}" onclick="dashSet('${p.k}')"><b>${lab[p.k]}</b><span>${p.s}</span></button>`).join('')}</div>`,
+panes=P.map(p=>`<div class="card" id="dp_${p.k}" style="display:${dashPane==p.k?'block':'none'}"><h2>${p.t}</h2>${p.inner}<button class="a s" style="margin:8px 0 0" onclick="dashSet('${p.k}')">Close</button></div>`).join('');
+return h.replace('@@DB@@',btns+panes)};
 seed();fixPrices();render();
 </script></body></html>
