@@ -885,5 +885,9 @@ const _as32=addSale;addSale=function(){const b=S.batches.find(x=>x.no==val('d_b'
 const n=val('sc_n').trim(),l=val('sc_l').trim(),q=num('d_q');if(!n||!l)return alert('Enter the customer name and location');if(!(q>0))return alert('Enter the quantity');if(q>b.rem)return alert('Only '+b.rem+' cups left in this batch');
 let s=S.shops.find(x=>x.home&&x.name.toLowerCase()==n.toLowerCase()&&(x.city||'').toLowerCase()==l.toLowerCase());if(!s){s={id:uid(),name:n,city:l,phone:val('sc_p'),wa:'',price:0,credit:0,home:true};S.shops.push(s)}
 const no='INV-'+String(++S.cfg.seq.inv).padStart(5,'0');S.invoices.push({no,date:val('d_d'),shop:s.id,batch:b.no,paid:0,free:q,price:0,total:0,cogs:q*b.cpc,pay:0,prev:shopBal(s.id)});b.rem-=q;render();showInv(no)};
+// ---- v33: profit shares (50/10/20/20) are added automatically when cash is received for batch sales
+const _fin9=fin;fin=function(){const f=_fin9();const unrec=r2(S.invoices.reduce((a,i)=>{const pr=i.total-i.cogs;return a+(i.total>0?pr*(1-Math.min(1,Math.max(0,i.pay/i.total))):0)},0));f.pend=unrec;f.cashNet=r2(f.net-unrec);f.avail=Math.max(0,r2(f.cashNet-S.allocs.reduce((a,x)=>a+x.base,0)));return f};
+let _aa33=0;const _r33=render;render=function(){if(!_aa33){_aa33=1;try{const f=fin();if(f.avail>=1){const p=S.cfg.pct,A=f.avail,op=r2(A*p.operating/100),o1=r2(A*p.owner1/100),o2=r2(A*p.owner2/100);S.allocs.push({date:today(),base:A,operating:op,owner1:o1,owner2:o2,reserve:r2(A-op-o1-o2),auto:1})}}catch(e){}_aa33=0}return _r33()};
+const _m33=V.money;V.money=function(){const f=fin();return _m33().replace(/<button class="a" onclick="alloc\(\)">[\s\S]*?<\/button>/,'<div class="g" style="margin-top:10px">'+kp('Profit waiting for payment',fmt(f.pend||0))+'</div><p class="m">Profit shares are added automatically whenever cash is received for batch sales (cash bills and later payments). Old pending collections are never shared.</p>')};
 seed();fixPrices();render();
 </script></body></html>
